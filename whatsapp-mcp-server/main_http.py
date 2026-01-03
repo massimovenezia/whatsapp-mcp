@@ -150,7 +150,7 @@ app = Starlette(
         Route(
             "/",
             lambda _ : JSONResponse(
-                {"name": "whatsapp-mcp", "status": "ok"},
+                {"status": "ok", "name": "whatsapp", "transport": "sse"},
                 media_type="application/json",
             ),
             methods=["GET"],
@@ -158,7 +158,7 @@ app = Starlette(
         Route(
             "/",
             lambda _ : JSONResponse(
-                {"name": "whatsapp-mcp", "status": "ok"},
+                {"status": "ok", "name": "whatsapp", "transport": "sse"},
                 media_type="application/json",
             ),
             methods=["POST"],
