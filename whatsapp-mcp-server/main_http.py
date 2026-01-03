@@ -123,22 +123,20 @@ async def sse_route(request: Request):
         return await handle_jsonrpc(request)
     # SSE initialization frame for legacy clients
     async def event_generator():
-        init_msg = {
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": types.LATEST_PROTOCOL_VERSION,
-                "capabilities": init_options.capabilities.model_dump(
-                    by_alias=True, exclude_none=True
-                ),
-                "serverInfo": {
-                    "name": init_options.server_name,
-                    "version": init_options.server_version,
-                },
-                "instructions": init_options.instructions,
-            },
+        yield {
+            "event": "message",
+            "data": json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": True},
+                        "serverInfo": {"name": "whatsapp", "version": "1.0.0"},
+                    },
+                }
+            ),
         }
-        yield {"event": "message", "data": json.dumps(init_msg)}
         while True:
             await asyncio.sleep(10)
 
