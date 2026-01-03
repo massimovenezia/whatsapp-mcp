@@ -84,16 +84,33 @@ Here's an example of what you can do when it's connected to Claude.
 
    Or restart Cursor.
 
-### HTTP/SSE endpoint (Poke)
+### HTTP Streamable endpoint (Poke)
 
-To expose the MCP server over HTTP/SSE for Poke:
+To expose the MCP server over HTTP for Poke:
 
 ```bash
 cd whatsapp-mcp-server
-uv run main_http.py
+uv run main_http.py --host 0.0.0.0 --port 3333
 ```
 
-Use `http://localhost:3333/sse` as the Server URL in Poke's integration UI.
+In Poke, set **Server URL** to `https://<host>/mcp` (no trailing slash).
+
+Quick validation (replace `<host>` with your host):
+
+```bash
+# A) Health
+curl -i https://<host>/
+# B) Human-friendly GET
+curl -i https://<host>/mcp
+# C) SSE Accept guard
+curl -i -H "Accept: text/event-stream" https://<host>/mcp
+# D) JSON-RPC initialize
+curl -i -X POST https://<host>/mcp \
+  -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0.0"}}}'
+# E) OAuth discovery should 404
+curl -i https://<host>/.well-known/openid-configuration
+```
 
 ### Windows Compatibility
 

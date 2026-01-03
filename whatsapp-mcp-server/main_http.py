@@ -1,18 +1,21 @@
-import asyncio
+import argparse
 import json
 import os
 import uvicorn
 from main import mcp
 from mcp import types
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.routing import Route
-from sse_starlette.sse import EventSourceResponse
 
-# Configure HTTP transport for streamable MCP over JSON-RPC
-mcp.settings.host = "0.0.0.0"
-mcp.settings.port = int(os.environ.get("PORT", 3333))
+# Configure HTTP transport defaults for streamable MCP over JSON-RPC
+default_host = os.environ.get("HOST", "0.0.0.0")
+default_port = int(os.environ.get("PORT", 3333))
+mcp.settings.host = default_host
+mcp.settings.port = default_port
 
 init_options = mcp._mcp_server.create_initialization_options()
 
@@ -118,143 +121,107 @@ async def handle_jsonrpc(request: Request) -> JSONResponse:
     )
 
 
+def _accepts_sse(request: Request) -> bool:
+    return "text/event-stream" in request.headers.get("accept", "").lower()
+
+
 async def sse_route(request: Request):
     if request.method == "POST":
         return await handle_jsonrpc(request)
-    # SSE initialization frame for legacy clients
-    async def event_generator():
-        yield {
-            "event": "message",
-            "data": json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {"tools": True},
-                        "serverInfo": {"name": "whatsapp", "version": "1.0.0"},
-                    },
-                }
-            ),
-        }
-        while True:
-            await asyncio.sleep(10)
+    if _accepts_sse(request):
+        return PlainTextResponse(
+            "SSE is not available on this endpoint. Use POST with JSON-RPC 2.0.",
+            status_code=405,
+        )
+    return PlainTextResponse(
+        "WhatsApp MCP streamable HTTP endpoint. Use POST with application/json.",
+        media_type="text/plain",
+    )
 
-    return EventSourceResponse(event_generator())
+
+async def mcp_route(request: Request):
+    if request.method == "POST":
+        return await handle_jsonrpc(request)
+    if _accepts_sse(request):
+        return PlainTextResponse(
+            "SSE is not available on this endpoint. Use POST with JSON-RPC 2.0.",
+            status_code=405,
+        )
+    return PlainTextResponse(
+        "WhatsApp MCP streamable HTTP endpoint. Use POST with application/json.",
+        media_type="text/plain",
+    )
+
+
+async def root_route(_: Request):
+    return JSONResponse(
+        {"name": "whatsapp-mcp", "status": "ok", "mcpEndpoint": "/mcp"},
+        media_type="application/json",
+    )
+
+
+async def redirect_mcp(_: Request):
+    return RedirectResponse("/mcp", status_code=308)
+
+
+async def redirect_sse(_: Request):
+    return RedirectResponse("/sse", status_code=308)
+
+
+def _not_found(_: Request):
+    return JSONResponse({"error": "not implemented"}, status_code=404)
 
 
 app = Starlette(
     routes=[
         Route("/sse", sse_route, methods=["GET", "POST", "HEAD", "OPTIONS"]),
-        Route("/mcp", handle_jsonrpc, methods=["POST", "HEAD", "OPTIONS"]),
-        Route(
-            "/",
-            lambda _ : JSONResponse(
-                {
-                    "name": "whatsapp",
-                    "protocolVersion": "2024-11-05",
-                    "transport": {"type": "sse", "endpoint": "/sse"},
-                },
-                media_type="application/json",
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/",
-            lambda _ : JSONResponse(
-                {
-                    "name": "whatsapp",
-                    "protocolVersion": "2024-11-05",
-                    "transport": {"type": "sse", "endpoint": "/sse"},
-                },
-                media_type="application/json",
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/.well-known/openid-configuration",
-            lambda _ : JSONResponse(
-                {
-                    "issuer": "http://localhost:3333",
-                    "authorization_endpoint": "",
-                    "token_endpoint": "",
-                    "jwks_uri": "",
-                    "response_types_supported": [],
-                    "subject_types_supported": ["public"],
-                    "id_token_signing_alg_values_supported": [],
-                },
-                media_type="application/json",
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-authorization-server",
-            lambda _ : JSONResponse(
-                {
-                    "issuer": "http://localhost:3333",
-                    "authorization_endpoint": "",
-                    "token_endpoint": "",
-                    "response_types_supported": [],
-                    "grant_types_supported": [],
-                },
-                media_type="application/json",
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-protected-resource",
-            lambda _ : JSONResponse(
-                {
-                    "resource": "whatsapp-mcp",
-                    "authorization_servers": [],
-                },
-                media_type="application/json",
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-protected-resource/sse",
-            lambda _ : JSONResponse(
-                {
-                    "resource": "whatsapp-mcp",
-                    "authorization_servers": [],
-                },
-                media_type="application/json",
-            ),
-            methods=["GET"],
-        ),
-        Route(
-            "/register",
-            lambda _ : JSONResponse(
-                {
-                    "client_id": "poke",
-                    "client_secret": "not-required",
-                },
-                media_type="application/json",
-            ),
-            methods=["POST"],
-        ),
+        Route("/sse/", redirect_sse, methods=["GET", "HEAD"]),
+        Route("/mcp", mcp_route, methods=["GET", "POST", "HEAD", "OPTIONS"]),
+        Route("/mcp/", redirect_mcp, methods=["GET", "HEAD"]),
+        Route("/", root_route, methods=["GET", "POST", "HEAD"]),
+        Route("/.well-known/openid-configuration", _not_found, methods=["GET"]),
+        Route("/.well-known/oauth-authorization-server", _not_found, methods=["GET"]),
+        Route("/.well-known/oauth-protected-resource", _not_found, methods=["GET"]),
+        Route("/.well-known/oauth-protected-resource/sse", _not_found, methods=["GET"]),
+        Route("/register", _not_found, methods=["POST"]),
+        Route("/token", _not_found, methods=["GET", "POST"]),
+        Route("/authorize", _not_found, methods=["GET", "POST"]),
         Route(
             "/.well-known/mcp.json",
             lambda _ : JSONResponse(
                 {
                     "name": "whatsapp",
                     "protocolVersion": "2024-11-05",
-                    "transport": {"type": "sse", "endpoint": "/sse"},
+                    "transport": {"type": "http", "endpoint": "/mcp"},
                 },
                 media_type="application/json",
             ),
             methods=["GET"],
         ),
-    ]
+    ],
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*", "https://poke.com"],
+            allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
+            allow_headers=["*"],
+            allow_credentials=False,
+        )
+    ],
 )
 
 
 if __name__ == "__main__":
-    print(f"Streamable HTTP MCP listening on http://localhost:{mcp.settings.port}/sse")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=default_host)
+    parser.add_argument("--port", type=int, default=default_port)
+    args = parser.parse_args()
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    print(f"Streamable HTTP MCP listening on http://{args.host}:{args.port}/mcp")
     uvicorn.run(
         app,
-        host=mcp.settings.host,
-        port=mcp.settings.port,
+        host=args.host,
+        port=args.port,
         log_level=mcp.settings.log_level.lower(),
     )

@@ -13,4 +13,4 @@ RUN uv pip install --system -r requirements.txt
 ENV PYTHONUNBUFFERED=1
 
 # Render provides $PORT
-CMD ["python", "main_http.py"]
+CMD ["sh", "-c", "uv run main_http.py --host 0.0.0.0 --port ${PORT:-10000}"]
