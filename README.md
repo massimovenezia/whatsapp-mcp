@@ -84,6 +84,17 @@ Here's an example of what you can do when it's connected to Claude.
 
    Or restart Cursor.
 
+### HTTP/SSE endpoint (Poke)
+
+To expose the MCP server over HTTP/SSE for Poke:
+
+```bash
+cd whatsapp-mcp-server
+uv run main_http.py
+```
+
+Use `http://localhost:3333/sse` as the Server URL in Poke's integration UI.
+
 ### Windows Compatibility
 
 If you're running this project on Windows, be aware that `go-sqlite3` requires **CGO to be enabled** in order to compile and work properly. By default, **CGO is disabled on Windows**, so you need to explicitly enable it and have a C compiler installed.

@@ -246,6 +246,12 @@ def download_media(message_id: str, chat_jid: str) -> Dict[str, Any]:
             "message": "Failed to download media"
         }
 
+
+@mcp.tool()
+def health_check() -> Dict[str, Any]:
+    """Simple health check tool to verify the MCP server is responsive."""
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     # Initialize and run the server
     mcp.run(transport='stdio')
