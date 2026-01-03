@@ -1,3 +1,5 @@
+import asyncio
+import json
 import os
 import uvicorn
 from main import mcp
@@ -6,6 +8,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
+from sse_starlette.sse import EventSourceResponse
 
 # Configure HTTP transport for streamable MCP over JSON-RPC
 mcp.settings.host = "0.0.0.0"
@@ -118,10 +121,28 @@ async def handle_jsonrpc(request: Request) -> JSONResponse:
 async def sse_route(request: Request):
     if request.method == "POST":
         return await handle_jsonrpc(request)
-    return PlainTextResponse(
-        "Streamable HTTP MCP: use POST /sse or POST /mcp with JSON-RPC 2.0.",
-        media_type="text/plain",
-    )
+    # SSE initialization frame for legacy clients
+    async def event_generator():
+        init_msg = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": types.LATEST_PROTOCOL_VERSION,
+                "capabilities": init_options.capabilities.model_dump(
+                    by_alias=True, exclude_none=True
+                ),
+                "serverInfo": {
+                    "name": init_options.server_name,
+                    "version": init_options.server_version,
+                },
+                "instructions": init_options.instructions,
+            },
+        }
+        yield {"event": "message", "data": json.dumps(init_msg)}
+        while True:
+            await asyncio.sleep(10)
+
+    return EventSourceResponse(event_generator())
 
 
 app = Starlette(
